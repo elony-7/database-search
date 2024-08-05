@@ -96,7 +96,7 @@
             loadingIndicator.style.display = 'block'; // Show loading indicator
 
             try {
-                const response = await fetch('http://localhost:10100/search', {
+                const response = await fetch('/api/search', { // Updated URL
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

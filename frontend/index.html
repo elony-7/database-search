@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breached</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+        }
+        .search-bar {
+            margin: 20px 0;
+        }
+        .search-bar input, .search-bar select {
+            width: calc(100% - 22px);
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .result {
+            margin: 10px 0;
+        }
+        .result p {
+            margin: 5px 0;
+        }
+        .pagination {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+        }
+        .pagination button, .pagination input, .pagination label {
+            padding: 10px;
+            margin-right: 5px;
+        }
+        .loading {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin: 20px 0;
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .data-info {
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Breached Database</h1>
+        <div class="search-bar">
+            <select id="filterSelect">
+                <option value="website">Website</option>
+                <option value="username">Username</option>
+            </select>
+            <input type="text" id="searchInput" placeholder="Type to search...">
+        </div>
+        <div id="loading" class="loading" style="display: none;">
+            <div class="loading-spinner"></div> Please wait...
+        </div>
+        <div id="dataInfo" class="data-info"></div>
+        <div id="results"></div>
+        <div id="pagination" class="pagination"></div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        const resultsPerPage = 50;
+        let debounceTimer;
+
+        function debounce(func, delay) {
+            return function(...args) {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => func.apply(this, args), delay);
+            };
+        }
+
+        async function fetchResults(query, filter, page) {
+            console.log('Fetching results with query:', query, 'filter:', filter, 'page:', page);
+            
+            const loadingIndicator = document.getElementById('loading');
+            loadingIndicator.style.display = 'block'; // Show loading indicator
+
+            try {
+                const response = await fetch('http://localhost:10100/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        filter: filter,
+                        page: page,
+                        limit: resultsPerPage
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const data = await response.json();
+                console.log('Data from API:', data);
+
+                const resultsContainer = document.getElementById('results');
+                resultsContainer.innerHTML = '';
+
+                if (!data.results || data.results.length === 0) {
+                    resultsContainer.innerHTML = '<p>No results found</p>';
+                } else {
+                    data.results.forEach(item => {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.classList.add('result');
+                        resultDiv.innerHTML = `
+                            <p><strong>URL:</strong> <a href="${item.url}" target="_blank">${item.url}</a></p>
+                            <p><strong>Username:</strong> ${item.username}</p>
+                            <p><strong>Password:</strong> ${item.password}</p>
+                        `;
+                        resultsContainer.appendChild(resultDiv);
+                    });
+                }
+
+                const totalResults = data.totalResults;
+                const startResult = (currentPage - 1) * resultsPerPage + 1;
+                const endResult = Math.min(currentPage * resultsPerPage, totalResults);
+
+                const dataInfoContainer = document.getElementById('dataInfo');
+                dataInfoContainer.textContent = `Showing ${startResult}-${endResult} data of ${totalResults}`;
+
+                const paginationContainer = document.getElementById('pagination');
+                paginationContainer.innerHTML = '';
+
+                const totalPages = data.totalPages;
+                const startPage = Math.max(1, currentPage - 3);
+                const endPage = Math.min(totalPages, currentPage + 3);
+
+                if (startPage > 1) {
+                    for (let i = 1; i <= 3 && i < startPage; i++) {
+                        const button = document.createElement('button');
+                        button.textContent = i;
+                        button.disabled = i === currentPage;
+                        button.addEventListener('click', () => {
+                            currentPage = i;
+                            fetchResults(query, filter, currentPage);
+                        });
+                        paginationContainer.appendChild(button);
+                    }
+
+                    if (startPage > 4) {
+                        const dots = document.createElement('span');
+                        dots.textContent = '...';
+                        paginationContainer.appendChild(dots);
+                    }
+                }
+
+                for (let i = startPage; i <= endPage; i++) {
+                    const button = document.createElement('button');
+                    button.textContent = i;
+                    button.disabled = i === currentPage;
+                    button.addEventListener('click', () => {
+                        currentPage = i;
+                        fetchResults(query, filter, currentPage);
+                    });
+                    paginationContainer.appendChild(button);
+                }
+
+                if (endPage < totalPages) {
+                    if (endPage < totalPages - 3) {
+                        const dots = document.createElement('span');
+                        dots.textContent = '...';
+                        paginationContainer.appendChild(dots);
+                    }
+
+                    for (let i = Math.max(totalPages - 2, endPage + 1); i <= totalPages; i++) {
+                        const button = document.createElement('button');
+                        button.textContent = i;
+                        button.disabled = i === currentPage;
+                        button.addEventListener('click', () => {
+                            currentPage = i;
+                            fetchResults(query, filter, currentPage);
+                        });
+                        paginationContainer.appendChild(button);
+                    }
+                }
+
+                // Add "Go to page:" input and button
+                const goToPageLabel = document.createElement('label');
+                goToPageLabel.textContent = 'Go to page:';
+                paginationContainer.appendChild(goToPageLabel);
+
+                const goToPageInput = document.createElement('input');
+                goToPageInput.type = 'number';
+                goToPageInput.min = 1;
+                goToPageInput.max = totalPages;
+                goToPageInput.value = currentPage;
+                paginationContainer.appendChild(goToPageInput);
+
+                const goToPageButton = document.createElement('button');
+                goToPageButton.textContent = 'Go';
+                goToPageButton.addEventListener('click', () => {
+                    const page = parseInt(goToPageInput.value, 10);
+                    if (page >= 1 && page <= totalPages) {
+                        currentPage = page;
+                        fetchResults(query, filter, currentPage);
+                    }
+                });
+                paginationContainer.appendChild(goToPageButton);
+            } catch (err) {
+                console.error('Error fetching results:', err);
+                document.getElementById('results').innerHTML = '<p>Error fetching results</p>';
+            } finally {
+                loadingIndicator.style.display = 'none'; // Hide loading indicator
+            }
+        }
+
+        const handleSearch = debounce(function() {
+            const query = document.getElementById('searchInput').value.trim();
+            const filter = document.getElementById('filterSelect').value;
+            if (query) {
+                fetchResults(query, filter, 1);
+            } else {
+                document.getElementById('results').innerHTML = '<p>Please enter a search query</p>';
+            }
+        }, 2000); // 2000 ms = 2 seconds
+
+        document.getElementById('searchInput').addEventListener('input', handleSearch);
+
+        document.getElementById('filterSelect').addEventListener('change', function () {
+            handleSearch();
+        });
+    </script>
+</body>
+</html>
